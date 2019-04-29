@@ -40,7 +40,7 @@ const float adcSamplingPeriod = 0.000005;   // I don't think this is correct
 
 float realTemp;         //temperature reading
 float oldRealTemp;      // previous temp reading
-float integral;         // integral value that accumulates over time
+float integral = 0;         // integral value that accumulates over time
 float desiredTemp = 20; //initialization default: 20 C
 float adcReading;       //reading from Analog-Digital Converter
 int adcReady = 1;       //1 if ADC conversion is done, else 0
@@ -49,7 +49,7 @@ int ccr;                //value to set the TA1CCR1 to
 
 
 
-void setPWM();          //prototype for function that sets TA1CCR1 value
+void setPWM(float);          //prototype for function that sets TA1CCR1 value
 float PID(float, float);            // PID controller
 
 int main(void)
@@ -165,15 +165,15 @@ void setPWM(float kdt)
 
 float PID(float difference, float kdt /*real and desired temp are globals*/){
     // Derivative:
-    derivative = kd * (kdt * (realTemp - oldRealTemp));
+    float derivative = kd * (kdt * (realTemp - oldRealTemp));
 
     //Integral:
-    integral = kp * (intergral + (difference * adcSamplingPeriod));  //using Reimann sums
+    integral = kp * (integral + (difference * adcSamplingPeriod));  //using Reimann sums
 
     //Proportional
-    proportion = difference * kp;
+    float proportion = difference * kp;
 
-    sum = derivative + interal + proportion;
+    float sum = derivative + integral + proportion;
 
     int new_ccr = ccr + sum * 2.5;          // new_ccr must be an int, so decimals purposely get truncated
                                             // using 2.5 multiplier since ccr goes from 0 to 250, so 2.5 normalizes the change
