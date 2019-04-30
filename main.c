@@ -7,10 +7,9 @@
  * on the PTAT.
  *
  *
- * Ports:   6.0: ADC input
+ * Ports:   6.0: ADC input from LM35
+ *          6.1: ADC input from Pot (for setting desired temp)
  *          2.7: PWM output
- *          4.4: TX
- *          4.5: RX
  *
  * Note: some code was taken from sample code in the TI resource explorer
  * Based on Intro to Embedded Milestone 2 Code
@@ -33,24 +32,25 @@
 const float kp = 1;             // proportional
 const float ki = 1;             // integral
 const float kd = 1;             // derivative
+float integral = 0;             // integral value that accumulates over time
 const float adcSamplingPeriod = 0.000005;   // I don't think this is correct
 
-float potArray[3];
-float pot;
+float potArray[3];              // ADCMEM1 reading (from pot)
+float pot;                      // median filtered pot readings
+float adcReading, adcReading2;  // readings from Analog-Digital Converter
+float adcArray[3] = {0,0,0};    // 3 most recent ADCMEM0 values (for median filter)
+int adcReady = 1;               // 1 if ADC conversion is done, else 0
+
 float realTemp;                 //temperature reading
 float oldRealTemp;              // previous temp reading
-float integral = 0;             // integral value that accumulates over time
-float desiredTemp = 20;         //initialization default: 20 C
-float adcReading, adcReading2;               //reading from Analog-Digital Converter
-float adcArray[3] = {0,0,0};    // 3 most recent ADC values (for median filter)
-int adcReady = 1;               //1 if ADC conversion is done, else 0
-int ccr;                        //value to set the TA1CCR1 to
+float desiredTemp = 20;         // initialization default: 20 C
+int ccr;                        // value to set the TA1CCR1 to
 
 
 
 
-void setPWM(float, float);          //prototype for function that sets TA1CCR1 value
-float PID(float, float);            // PID controller
+void setPWM(float, float);                  //prototype for function that sets TA1CCR1 value
+float PID(float, float);                    // PID controller
 float medianFilter(float *);
 
 int main(void)
@@ -118,8 +118,8 @@ int main(void)
         potArray[i] = adcReading2;
         pot = medianFilter(potArray);
     }
-    setPWM(kdt, median);                               //set PWM values to change duty cycle
-    adcReady = 0;                           //ADC no longer ready
+    setPWM(kdt, median);                        //set PWM values to change duty cycle
+    adcReady = 0;                               //ADC no longer ready
 
   }
 
@@ -183,18 +183,17 @@ void setPWM(float kdt, float median)
     //else if within 1 degree, don't bother to change PWM
      */
 
-    if(ccr < 0)                 //ensure ccr never gets negative
-    {
-        ccr = 0;
+    if(ccr < 0){                 //ensure ccr never gets negative
+         ccr = 0;
     }
-    else if(ccr > 250){     //ensure CCR1 never gets too close to CCR0 (CCR0 is 262)
-                                //if CCR1 is too close to CCR0, they won't both fire
+    else if(ccr > 250){         //ensure CCR1 never gets too close to CCR0 (CCR0 is 262). If CCR1 is too close to CCR0, they won't both fire
         ccr = 250;
     }
 
     TA1CCR1 = ccr;              //finally set the CCR1 value
 
 }
+
 
 float PID(float difference, float kdt /*real and desired temp are globals*/){
     // Derivative:
@@ -238,7 +237,7 @@ void __attribute__ ((interrupt(TIMER1_A1_VECTOR))) TIMER1_A1_ISR (void)
              break;
     default: break;
   }
-  TA1IV &= ~TA1IV_TA1IFG; // Clear the Timer interrupt Flag
+  TA1IV &= ~TA1IV_TA1IFG;                    // Clear the Timer interrupt Flag
 }
 
 
