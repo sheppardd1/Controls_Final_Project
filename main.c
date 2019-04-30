@@ -19,44 +19,45 @@
 
 /*
  * Development Notes:
- *      Program still written as if desired temperature comes from UART instead of pot
- *          Need to read pot from ADC
- *          Need to act on ADC reading to get desired temperature
+ *      Need to test "simultaneous" ADC readings
  *      PID control not yet tested
  *          kp, kd, ki values are just arbitrary
  *          code functionality not yet verified
  *      Not yet sure of actual value for adcSamplingPeriod
+ *      May need to change reference voltage in code ?
  */
 
 #include <msp430F5529.h>
 #include <math.h>
 
-const float kp = 1;
-const float ki = 1;
-const float kd = 1;
+const float kp = 1;             // proportional
+const float ki = 1;             // integral
+const float kd = 1;             // derivative
 const float adcSamplingPeriod = 0.000005;   // I don't think this is correct
 
-float realTemp;         //temperature reading
-float oldRealTemp;      // previous temp reading
-float integral = 0;         // integral value that accumulates over time
-float desiredTemp = 20; //initialization default: 20 C
-float adcReading;       //reading from Analog-Digital Converter
-float adcArray[3] = {0,0,0};
-int adcReady = 1;       //1 if ADC conversion is done, else 0
-int ccr;                //value to set the TA1CCR1 to
+float potArray[3];
+float pot;
+float realTemp;                 //temperature reading
+float oldRealTemp;              // previous temp reading
+float integral = 0;             // integral value that accumulates over time
+float desiredTemp = 20;         //initialization default: 20 C
+float adcReading, adcReading2;               //reading from Analog-Digital Converter
+float adcArray[3] = {0,0,0};    // 3 most recent ADC values (for median filter)
+int adcReady = 1;               //1 if ADC conversion is done, else 0
+int ccr;                        //value to set the TA1CCR1 to
 
 
 
 
 void setPWM(float, float);          //prototype for function that sets TA1CCR1 value
 float PID(float, float);            // PID controller
-float medianFilter();
+float medianFilter(float *);
 
 int main(void)
 {
   WDTCTL = WDTPW + WDTHOLD;                 // Stop WDT
   REFCTL0 &= ~REFMSTR;                      // Reset REFMSTR to hand over control to
-                                            // ADC12_A ref control registers
+                                            //   ADC12_A ref control registers
 
   float kdt = kd / adcSamplingPeriod;       // value = kd / ADC sampling period
 
@@ -64,9 +65,11 @@ int main(void)
   P2SEL &= ~BIT7;                           //set 2.7 to be GPIO
   P2DIR |= BIT7;                            //set 2.7 to be output
 
-  //port 6.0 is analog input 0***************************************************************
+  //port 6.0, 6.1 is analog input 0, 1*******************************************************
   P6DIR &= ~BIT0;                           //set 6.0 to be input
-  P6SEL |= BIT0;                            //set 6.0 to be A0 (input of A to D)
+  P6DIR &= ~BIT1;                           //set 6.1 to be input
+  P6SEL |= BIT0;                            //set 6.0 to be A0 (input of ADC)
+  P6SEL |= BIT1;                            //set 6.1 to be A1
 
   /*
   // Not needed for Controls project, but may be useful for debugging:
@@ -111,7 +114,9 @@ int main(void)
         ADC12CTL0 |= ADC12SC;                   // Sampling and conversion start
         while(adcReady == 0){};                 //Wait for ADC to finish conversion
         adcArray[i] = adcReading;
-        median = medianFilter();
+        median = medianFilter(adcArray);
+        potArray[i] = adcReading2;
+        pot = medianFilter(potArray);
     }
     setPWM(kdt, median);                               //set PWM values to change duty cycle
     adcReady = 0;                           //ADC no longer ready
@@ -131,21 +136,23 @@ void __attribute__ ((interrupt(ADC12_VECTOR))) ADC12_ISR (void)
 {
     adcReady = 1;                           //when this interrupt fires, ADC is ready
     adcReading = ADC12MEM0;                 //record ADC reading
+    adcReading2 = ADC12MEM1;
+
 
     __bic_SR_register_on_exit(LPM0_bits);   // Exit active CPU
 }
 
-float medianFilter(){
+float medianFilter(float *a){
     // ONLY WORKS IF WINDOW OF FILTER IS 3 NUMBERS WIDE
     // This code is complicated, but also efficient
     // Checks to see if the current value is between the other two
 
-    if((adcArray[0] <= adcArray[1] && adcArray[0] >= adcArray[2]) || (adcArray[0] >= adcArray[1] && adcArray[0] <= adcArray[2]))
-        return adcArray[0];
-    else if((adcArray[1] <= adcArray[0] && adcArray[1] >= adcArray[2]) || (adcArray[1] >= adcArray[0] && adcArray[1] <= adcArray[2]))
-        return adcArray[1];
+    if((adcArray[0] <= a[1] && a[0] >= a[2]) || (a[0] >= a[1] && a[0] <= a[2]))
+        return a[0];
+    else if((a[1] <= a[0] && a[1] >= a[2]) || (a[1] >= a[0] && a[1] <= a[2]))
+        return a[1];
     else
-        return adcArray[2];
+        return a[2];
 }
 
 //set CCR1 values to change duty Cycle of PWM: Low DC = slow fan, High DC = fast fan
@@ -309,37 +316,38 @@ __interrupt void USCI_A1_ISR(void)
  *
  * --/COPYRIGHT--*/
 //******************************************************************************
-//  MSP430F552x Demo - ADC12, Sample A10 Temp and Convert to oC and oF
+//  MSP430F552x Demo - ADC12, Repeated Sequence of Conversions
 //
-//  Description: A single sample is made on A10 with reference to internal
-//  1.5V Vref. Software sets ADC12SC to start sample and conversion - ADC12SC
-//  automatically cleared at EOC. ADC12 internal oscillator times sample
-//  and conversion. In Mainloop MSP430 waits in LPM4 to save power until
-//  ADC10 conversion complete, ADC12_ISR will force exit from any LPMx in
-//  Mainloop on reti.
-//  ACLK = n/a, MCLK = SMCLK = default DCO ~ 1.045MHz, ADC12CLK = ADC12OSC
+//  Description: This example shows how to perform a repeated sequence of
+//  conversions using "repeat sequence-of-channels" mode.  AVcc is used for the
+//  reference and repeated sequence of conversions is performed on Channels A0,
+//  A1, A2, and A3. Each conversion result is stored in ADC12MEM0, ADC12MEM1,
+//  ADC12MEM2, and ADC12MEM3 respectively. After each sequence, the 4 conversion
+//  results are moved to A0results[], A1results[], A2results[], and A3results[].
+//  Test by applying voltages to channels A0 - A3. Open a watch window in
+//  debugger and view the results. Set Breakpoint1 in the index increment line
+//  to see the array values change sequentially and Breakpoint2 to see the entire
+//  array of conversion results in A0results[], A1results[], A2results[], and
+//  A3results[]for the specified Num_of_Results.
 //
-//  Uncalibrated temperature measured from device to devive will vary do to
-//  slope and offset variance from device to device - please see datasheet.
+//  Note that a sequence has no restrictions on which channels are converted.
+//  For example, a valid sequence could be A0, A3, A2, A4, A2, A1, A0, and A7.
+//  See the MSP430x5xx User's Guide for instructions on using the ADC12.
 //
-//  NOTE:1.REFMSTR bit in REFCTL0 regsiter is reset to allow the ADC12_A reference
-//    control regsiters handle the reference setting. Upon resetting the REFMSTR
-//    bit, all the settings in REFCTL are 'dont care' and the legacy ADC12
-//    control bits (ADC12REFON, ADC12REF2_5, ADC12TCOFF and ADC12REFOUT) control
-//    the reference system.
-//    2. Use the TLV calibrated temperature to measure temperature
-//   (the TLV CALIBRATED DATA IS STORED IN THE INFORMATION SEGMENT, SEE DEVICE DATASHEET)
-//
-//                MSP430F552x
+//               MSP430F552x
 //             -----------------
-//         /|\|              XIN|-
+//         /|\|                 |
 //          | |                 |
-//          --|RST          XOUT|-
+//          --|RST              |
 //            |                 |
-//            |A10              |
+//    Vin0 -->|P6.0/CB0/A0      |
+//    Vin1 -->|P6.1/CB1/A1      |
+//    Vin2 -->|P6.2/CB2/A2      |
+//    Vin3 -->|P6.3/CB3/A3      |
+//            |                 |
 //
-//   F. Chen
+//   Bhargavi Nisarga
 //   Texas Instruments Inc.
-//   Dec. 2012
-//   Built with IAR Embedded Workbench Version: 5.51.1 & Code Composer Studio V5.2.1
+//   April 2009
+//   Built with CCSv4 and IAR Embedded Workbench Version: 4.21
 //******************************************************************************
