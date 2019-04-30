@@ -25,9 +25,7 @@
  *      PID control not yet tested
  *          kp, kd, ki values are just arbitrary
  *          code functionality not yet verified
- *      Still need to implement median filter to filter out bad ADC values
  *      Not yet sure of actual value for adcSamplingPeriod
- *      Not 100% sure how to get new CCR value from PID
  */
 
 #include <msp430F5529.h>
@@ -167,7 +165,7 @@ void setPWM(float kdt, float median)
 
     float difference = realTemp - desiredTemp;          //determine difference between real and desired temp
 
-    PID(difference, kdt);
+    ccr = PID(difference, kdt);
 
     /* from milestone 2:
     //proportional control: change PWM based on difference in temperature**************************************
@@ -182,7 +180,7 @@ void setPWM(float kdt, float median)
     {
         ccr = 0;
     }
-    else if(TA1CCR1 > 250){     //ensure CCR1 never gets too close to CCR0 (CCR0 is 262)
+    else if(ccr > 250){     //ensure CCR1 never gets too close to CCR0 (CCR0 is 262)
                                 //if CCR1 is too close to CCR0, they won't both fire
         ccr = 250;
     }
