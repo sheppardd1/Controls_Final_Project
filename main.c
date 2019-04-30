@@ -68,6 +68,8 @@ int main(void)
   P6DIR &= ~BIT0;                           //set 6.0 to be input
   P6SEL |= BIT0;                            //set 6.0 to be A0 (input of A to D)
 
+  /*
+  // Not needed for Controls project, but may be useful for debugging:
   //UART Setup*******************************************************************************
   P4SEL |= BIT5 + BIT4;                     //enable UART for these pins
   UCA1CTL1 |= UCSWRST;                      // **Put state machine in reset**
@@ -79,6 +81,7 @@ int main(void)
   UCA1CTL1 &= ~UCSWRST;                     // **Initialize USCI state machine**
   UCA1IE |= UCRXIE;                         // Enable USCI_A0 RX interrupt
   UCA1TXBUF = 0;                            //set RX buffer to 0 for testing purposes
+  */
 
   //PWM initialization************************************************************************
   //using Timer A1
@@ -126,7 +129,7 @@ void __attribute__ ((interrupt(ADC12_VECTOR))) ADC12_ISR (void)
 void setPWM(float kdt)
 {
 
-    //using the LM60CIZ PTAT
+    //using the LM35 PTAT
     //PTAT equation: Vo = 10 mV/C + 0 mV
     //therefore, Temperature = Vo / 0.01
 
@@ -181,29 +184,6 @@ float PID(float difference, float kdt /*real and desired temp are globals*/){
     return new_ccr;
 }
 
-//UART interrupt
-#pragma vector=USCI_A1_VECTOR
-__interrupt void USCI_A1_ISR(void)
-
-{
-  switch(__even_in_range(UCA1IV,4))         //looking for a specific interrupt case: when RX has value
-  {
-  case 0:break;                             // Vector 0 - no interrupt
-  case 2:                                   // Vector 2 - RXIFG (UART is receiving data in RX)
-    // Special case: if UART input is 0, we want it to send back the temperature reading instead of setting desired temp
-    if(UCA1RXBUF == 0x00){
-        while (!(UCA1IFG & UCTXIFG));       //wait for TX buffer to be ready
-        UCA1TXBUF = realTemp;               //send out temp reading
-    }
-    //if UART input is not special case of 0, set desired temp
-    else
-        desiredTemp = UCA1RXBUF;
-    break;
-  case 4:break;                             // Vector 4 - TXIFG
-  default: break;
-  }
-}
-
 //Timer Interrupt: used for software PWM
 #if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
 #pragma vector=TIMER1_A1_VECTOR
@@ -230,6 +210,33 @@ void __attribute__ ((interrupt(TIMER1_A1_VECTOR))) TIMER1_A1_ISR (void)
   }
   TA1IV &= ~TA1IV_TA1IFG; // Clear the Timer interrupt Flag
 }
+
+
+/*
+//UART interrupt
+#pragma vector=USCI_A1_VECTOR
+__interrupt void USCI_A1_ISR(void)
+
+{
+  switch(__even_in_range(UCA1IV,4))         //looking for a specific interrupt case: when RX has value
+  {
+  case 0:break;                             // Vector 0 - no interrupt
+  case 2:                                   // Vector 2 - RXIFG (UART is receiving data in RX)
+    // Special case: if UART input is 0, we want it to send back the temperature reading instead of setting desired temp
+    if(UCA1RXBUF == 0x00){
+        while (!(UCA1IFG & UCTXIFG));       //wait for TX buffer to be ready
+        UCA1TXBUF = realTemp;               //send out temp reading
+    }
+    //if UART input is not special case of 0, set desired temp
+    else
+        desiredTemp = UCA1RXBUF;
+    break;
+  case 4:break;                             // Vector 4 - TXIFG
+  default: break;
+  }
+}
+*/
+
 
 
 //Info from Resource Explorer
