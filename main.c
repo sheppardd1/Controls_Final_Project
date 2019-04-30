@@ -43,14 +43,16 @@ float oldRealTemp;      // previous temp reading
 float integral = 0;         // integral value that accumulates over time
 float desiredTemp = 20; //initialization default: 20 C
 float adcReading;       //reading from Analog-Digital Converter
+float adcArray[3] = {0,0,0};
 int adcReady = 1;       //1 if ADC conversion is done, else 0
 int ccr;                //value to set the TA1CCR1 to
 
 
 
 
-void setPWM(float);          //prototype for function that sets TA1CCR1 value
+void setPWM(float, float);          //prototype for function that sets TA1CCR1 value
 float PID(float, float);            // PID controller
+float medianFilter();
 
 int main(void)
 {
@@ -100,14 +102,24 @@ int main(void)
   __bis_SR_register(LPM0 + GIE);        // LPM0 with interrupts enabled
 
   //polling for ADC values********************************************************************
+
+  short i;
+  float median;
+
+
   while(1)
   {
-    ADC12CTL0 |= ADC12SC;                   // Sampling and conversion start
-    while(adcReady == 0){};                 //Wait for ADC to finish conversion
-    setPWM(kdt);                               //set PWM values to change duty cycle
+    for(i = 2; i >= 0; --i){
+        ADC12CTL0 |= ADC12SC;                   // Sampling and conversion start
+        while(adcReady == 0){};                 //Wait for ADC to finish conversion
+        adcArray[i] = adcReading;
+        median = medianFilter();
+    }
+    setPWM(kdt, median);                               //set PWM values to change duty cycle
     adcReady = 0;                           //ADC no longer ready
 
   }
+
 }
 
 #if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
@@ -125,8 +137,21 @@ void __attribute__ ((interrupt(ADC12_VECTOR))) ADC12_ISR (void)
     __bic_SR_register_on_exit(LPM0_bits);   // Exit active CPU
 }
 
+float medianFilter(){
+    // ONLY WORKS IF WINDOW OF FILTER IS 3 NUMBERS WIDE
+    // This code is complicated, but also efficient
+    // Checks to see if the current value is between the other two
+
+    if((adcArray[0] <= adcArray[1] && adcArray[0] >= adcArray[2]) || (adcArray[0] >= adcArray[1] && adcArray[0] <= adcArray[2]))
+        return adcArray[0];
+    else if((adcArray[1] <= adcArray[0] && adcArray[1] >= adcArray[2]) || (adcArray[1] >= adcArray[0] && adcArray[1] <= adcArray[2]))
+        return adcArray[1];
+    else
+        return adcArray[2];
+}
+
 //set CCR1 values to change duty Cycle of PWM: Low DC = slow fan, High DC = fast fan
-void setPWM(float kdt)
+void setPWM(float kdt, float median)
 {
 
     //using the LM35 PTAT
@@ -135,7 +160,7 @@ void setPWM(float kdt)
 
     //calculations*********************************************************************************************
 
-    float analogVoltage = adcReading * (5 / 4096);      //convert digital reading back to analog voltage value
+    float analogVoltage = median * (5 / 4096);      //convert digital reading back to analog voltage value
                                                         // reference PTAT voltage is 5 V, ADC is 12 bits (2^12 = 4096)
     oldRealTemp = realTemp;
     realTemp = (analogVoltage / 0.01);     //convert analog voltage to temperature
@@ -171,7 +196,7 @@ float PID(float difference, float kdt /*real and desired temp are globals*/){
     float derivative = kd * (kdt * (realTemp - oldRealTemp));
 
     //Integral:
-    integral = kp * (integral + (difference * adcSamplingPeriod));  //using Reimann sums
+    integral = kp * (integral + (difference * adcSamplingPeriod*3));  //using Reimann sums, and multiplying period by 3 since using median filter
 
     //Proportional
     float proportion = difference * kp;
