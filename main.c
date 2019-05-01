@@ -33,18 +33,21 @@ const float kp = 1;             // proportional
 const float ki = 1;             // integral
 const float kd = 1;             // derivative
 float integral = 0;             // integral value that accumulates over time
+float derivative = 0;           // derivative
 const float adcSamplingPeriod = 0.000005;   // I don't think this is correct
 
-float potArray[3];              // ADCMEM1 reading (from pot)
-float pot;                      // median filtered pot readings
-float adcReading, adcReading2;  // readings from Analog-Digital Converter
+float potArray[3] = {0,0,0};              // ADCMEM1 reading (from pot)
+float pot = 0;                      // median filtered pot readings
+float adcReading = 0;               // readings from Analog-Digital Converter
+float adcReading2 = 0;
 float adcArray[3] = {0,0,0};    // 3 most recent ADCMEM0 values (for median filter)
 int adcReady = 1;               // 1 if ADC conversion is done, else 0
 
-float realTemp;                 //temperature reading
-float oldRealTemp;              // previous temp reading
+float realTemp = 0;                 //temperature reading
+float oldRealTemp = 0;              // previous temp reading
 float desiredTemp = 20;         // initialization default: 20 C
-int ccr;                        // value to set the TA1CCR1 to
+int ccr = 111;                        // value to set the TA1CCR1 to  float median;
+float median = 0;
 
 
 
@@ -71,21 +74,6 @@ int main(void)
   P6SEL |= BIT0;                            //set 6.0 to be A0 (input of ADC)
   P6SEL |= BIT1;                            //set 6.1 to be A1
 
-  /*
-  // Not needed for Controls project, but may be useful for debugging:
-  //UART Setup*******************************************************************************
-  P4SEL |= BIT5 + BIT4;                     //enable UART for these pins
-  UCA1CTL1 |= UCSWRST;                      // **Put state machine in reset**
-  UCA1CTL1 |= UCSSEL_2;
-  // Use Table 24-5 in Family User Guide for BAUD rate calculation
-  UCA1BR0 = 6;                              // 1MHz 9600 (see User's Guide)
-  UCA1BR1 = 0;                              // 1MHz 9600
-  UCA1MCTL = UCBRS_0 + UCBRF_13 + UCOS16;   // Modln UCBRSx=0, UCBRFx=0,
-  UCA1CTL1 &= ~UCSWRST;                     // **Initialize USCI state machine**
-  UCA1IE |= UCRXIE;                         // Enable USCI_A0 RX interrupt
-  UCA1TXBUF = 0;                            //set RX buffer to 0 for testing purposes
-  */
-
   //PWM initialization************************************************************************
   //using Timer A1
   TA1CCTL1 = CCIE;                          // CCR1 interrupt enabled for TA1
@@ -100,12 +88,12 @@ int main(void)
   ADC12IE = 0x01;                           // Enable interrupt
   ADC12CTL0 |= ADC12ENC;                    //Enable conversion
 
-  __bis_SR_register(LPM0 + GIE);        // LPM0 with interrupts enabled
+  __bis_SR_register(/*LPM0 + */GIE);        // LPM0 with interrupts enabled
 
   //polling for ADC values********************************************************************
 
   short i;
-  float median;
+
 
 
   while(1)
@@ -170,18 +158,10 @@ void setPWM(float kdt, float median)
     oldRealTemp = realTemp;
     realTemp = (analogVoltage / 0.01);     //convert analog voltage to temperature
 
-    float difference = realTemp - desiredTemp;          //determine difference between real and desired temp
+    float error = pot - (realTemp - desiredTemp);          //determine error between real and desired temp
 
-    ccr = PID(difference, kdt);
+    ccr = PID(error, kdt);
 
-    /* from milestone 2:
-    //proportional control: change PWM based on difference in temperature**************************************
-    if(difference > 1)                                  //if temp is too high
-        ccr += (difference);                            //increase ccr value to speed up fan
-    else if(difference < -1)                            //if temp is too low
-        ccr += (difference);                            //decrease ccr value to slow down fan (difference is already negative if realTemp is too low)
-    //else if within 1 degree, don't bother to change PWM
-     */
 
     if(ccr < 0){                 //ensure ccr never gets negative
          ccr = 0;
@@ -195,15 +175,15 @@ void setPWM(float kdt, float median)
 }
 
 
-float PID(float difference, float kdt /*real and desired temp are globals*/){
+float PID(float error, float kdt /*real and desired temp are globals*/){
     // Derivative:
-    float derivative = kd * (kdt * (realTemp - oldRealTemp));
+    derivative = kd * (kdt * (realTemp - oldRealTemp));
 
     //Integral:
-    integral = kp * (integral + (difference * adcSamplingPeriod*3));  //using Reimann sums, and multiplying period by 3 since using median filter
+    integral = kp * (integral + (error * adcSamplingPeriod*3));  //using Reimann sums, and multiplying period by 3 since using median filter
 
     //Proportional
-    float proportion = difference * kp;
+    float proportion = error * kp;
 
     float sum = derivative + integral + proportion;
 
@@ -239,32 +219,6 @@ void __attribute__ ((interrupt(TIMER1_A1_VECTOR))) TIMER1_A1_ISR (void)
   }
   TA1IV &= ~TA1IV_TA1IFG;                    // Clear the Timer interrupt Flag
 }
-
-
-/*
-//UART interrupt
-#pragma vector=USCI_A1_VECTOR
-__interrupt void USCI_A1_ISR(void)
-
-{
-  switch(__even_in_range(UCA1IV,4))         //looking for a specific interrupt case: when RX has value
-  {
-  case 0:break;                             // Vector 0 - no interrupt
-  case 2:                                   // Vector 2 - RXIFG (UART is receiving data in RX)
-    // Special case: if UART input is 0, we want it to send back the temperature reading instead of setting desired temp
-    if(UCA1RXBUF == 0x00){
-        while (!(UCA1IFG & UCTXIFG));       //wait for TX buffer to be ready
-        UCA1TXBUF = realTemp;               //send out temp reading
-    }
-    //if UART input is not special case of 0, set desired temp
-    else
-        desiredTemp = UCA1RXBUF;
-    break;
-  case 4:break;                             // Vector 4 - TXIFG
-  default: break;
-  }
-}
-*/
 
 
 
