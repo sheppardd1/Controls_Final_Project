@@ -86,13 +86,16 @@ float PID(float error){
     derivative = kd * (kdt * (real_temp - old_real_temp));
 
     //Integral:
-    integral = kp * (integral + (error * adc_sampling_period*3));  //using Reimann sums, and multiplying period by 3 since using median filter
+    integral = ki * (integral + (error * adc_sampling_period*3));  //using Reimann sums, and multiplying period by 3 since using median filter
 
     //Proportional
     float proportion = error * kp;
 
+    // summing junction
     float sum = derivative + integral + proportion;
 
-    return pwm_val + sum * 2.55;          // new_ccr must be an int, so decimals purposely get truncated;
-                                          // using 2.55 multiplier since ccr goes from 0 to 255, so 2.55 normalizes the change
+    int new_pwm =  pwm_val + sum * 2.55;          // new_ccr must be an int, so decimals purposely get truncated;
+                                                  // using 2.55 multiplier since ccr goes from 0 to 255, so 2.55 normalizes the change
+
+    return new_pwm;
 }
