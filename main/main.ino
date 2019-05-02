@@ -1,7 +1,7 @@
 // Ports
 int lm35_pin = 0;               // connect PTAT output to A0 (6.0 on MSP430F5529LP)
 int pot_pin = 1;                // connect potentiometer to A1 (6.1)
-int pwm_out = 0;                // need to figure out which pin this is on the board
+int pwm_out = P3_5;             
 
 // PID Variables
 const float kp = 1;             // proportional
