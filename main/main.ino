@@ -1,6 +1,7 @@
+
 // Ports
-int lm35_pin = 0;               // connect PTAT output to A0 (6.0 on MSP430F5529LP)
-int pot_pin = 1;                // connect potentiometer to A1 (6.1)
+int lm35_pin = P6_0;               // connect PTAT output to A0 (6.0 on MSP430F5529LP)
+int pot_pin = P6_1;                // connect potentiometer to A1 (6.1)
 int pwm_out = P3_5;             
 
 // PID Variables
@@ -12,9 +13,9 @@ float derivative = 0;           // derivative
 const float adc_sampling_period = 0.1;   // rate at which ADC samples
 
 // ADC Readings
-float pot_array[3] = {0,0,0};   // 3 readings from pot
+float pot_array [3] = {0,0,0};   // 3 readings from pot
 float pot = 0;                  // median filtered pot readings
-float ptat_array[3] = {0,0,0};  // 3 readings from ptat
+float ptat_array [3] = {0,0,0};  // 3 readings from ptat
 float ptat = 0;                 // median fitlered ptat value
 
 // Calculated from ADC
@@ -25,7 +26,7 @@ float old_real_temp = 0;        // previous temp reading
 float desired_temp = 20;        // initialization to 20 deg C
 int pwm_val = 100;              // can be from 0 to 255
 float kdt = kd / adc_sampling_period; // setting this once instead of recalculating makes derivative calculation faster
-float pot_scale = 1;             // for scaling pot reading
+float pot_scale = 1;            // for scaling pot reading
 
 
 void setup() {
@@ -52,7 +53,7 @@ float medianFilter(float a[]){
     // This code is complicated, but also efficient
     // Checks to see if the current value is between the other two
 
-    if((ptat_array[0] <= a[1] && a[0] >= a[2]) || (a[0] >= a[1] && a[0] <= a[2]))
+    if((a[0] <= a[1] && a[0] >= a[2]) || (a[0] >= a[1] && a[0] <= a[2]))
         return a[0];
     else if((a[1] <= a[0] && a[1] >= a[2]) || (a[1] >= a[0] && a[1] <= a[2]))
         return a[1];
