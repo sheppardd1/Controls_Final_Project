@@ -33,12 +33,16 @@ int pwm_out = P3_5;
 //int toggle_pin = P2_7;          // for determining computation time 
 
 // PID Variables
-const float kp = 150;             // proportional
+const float kp = 1700;             // proportional
 const float ki = 1;               // integral
-const float kd = 50;              // derivative
+const float kd = 1800;              // derivative
 float integral = 0;               // integral value that accumulates over time
 float derivative = 0;             // derivative
-const float adc_sampling_period = 0.1027;   // rate at which ADC samples
+float error = 0;
+
+float sum = 0;
+const int sampling_delay = 100;
+const float adc_sampling_period = 0.0027 + (sampling_delay * 0.001);   // rate at which ADC samples
 
 // ADC Readings and constants
 const float volts_per_bit = 3.3 / 4096; // reference is 3.3 V and ADC is 12 bits (2^12 = 4096)
@@ -60,6 +64,7 @@ float pot_scale = 1;              // for scaling pot reading
 float ptat_offset = 0.5;
 bool first_time = true;
 const float slope = -0.3 / 3.3;   // equation: desired_ptat-voltage = slope * pot_voltage + 0.8
+const float pwm_scale = 2.55;        // scale for pwm change
 
 
 void setup() {
@@ -77,7 +82,7 @@ void loop() {
   for(int i = 0; i < 3; ++i){
     ptat_array[i] = analogRead(lm35_pin);
     pot_array[i] = analogRead(pot_pin);
-    delay(100);
+    delay(sampling_delay);
   }
 
   // apply median fitler to readings *************************************
@@ -97,6 +102,14 @@ void loop() {
   Serial.println(ptat_voltage);
   Serial.print("Pot: ");
   Serial.println(pot_voltage);
+  //Serial.print("Derivative: ");
+  //Serial.println(derivative);
+  //Serial.print("Integral: ");
+  //Serial.println(integral);
+  //Serial.print("Error: ");
+  //Serial.println(error);
+  Serial.print("Sum: ");
+  Serial.println(sum);
 }
 
 float medianFilter(float a[]){
@@ -133,7 +146,7 @@ void setPWM()
   desired_ptat_voltage = slope * pot_voltage + 0.8;   // desired_ptat-voltage = slope * pot_voltage + 0.8
 
   // if ptat_votlage > desired, then temp is too high, so increase duty cycle
-  float error = ptat_voltage - desired_ptat_voltage;
+  error = ptat_voltage - desired_ptat_voltage;
 
   //use PID controller ***************************************************************************************
   pwm_val = PID(error);
@@ -160,15 +173,15 @@ float PID(float error){
   float proportion = kp;
 
   // summing junction ****************************************************************************************
-  float sum = (derivative + integral + proportion) * error;
+  sum = (derivative + integral + proportion) * error;
 
-  int new_pwm = pwm_val + sum * 2.55; // new_ccr must be an int, so decimals purposely get truncated;
-                                      // using 2.55 since pwm_val goes from 0 to 255, so 2.55 normalizes it
+  int new_pwm = pwm_val + sum * pwm_scale; // new_ccr must be an int, so decimals purposely get truncated;
+                                           // could use scale = 2.55 since pwm_val goes from 0 to 255, so 2.55 normalizes it
   // account for out of bounds values
   if(new_pwm > 255)
     return 255;
-  else if (new_pwm < 0)
-    return 0;
+  else if (new_pwm < 30)
+    return 30;
   else
     return new_pwm;
 }
