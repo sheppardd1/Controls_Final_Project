@@ -30,19 +30,16 @@
 int lm35_pin = P6_0;              // connect PTAT output to A0 (6.0 on MSP430F5529LP)
 int pot_pin = P6_1;               // connect potentiometer to A1 (6.1)
 int pwm_out = P3_5;             
-//int toggle_pin = P2_7;          // for determining computation time 
+//int toggle_pin = P2_7;          // used for determining computation time 
 
 // PID Variables
-const float kp = 1700;             // proportional
-const float ki = 1;               // integral
-const float kd = 1800;              // derivative
+const float kp = 1700;            // proportional constant
+const float ki = 1;               // integral constant
+const float kd = 1800;            // derivative constant
 float integral = 0;               // integral value that accumulates over time
-float derivative = 0;             // derivative
-float error = 0;
-
-float sum = 0;
-const int sampling_delay = 100;
-const float adc_sampling_period = 0.0027 + (sampling_delay * 0.001);   // rate at which ADC samples
+float derivative = 0;             // derivative value (past reading vs. current)
+float error = 0;                  // real - desired ptat voltage
+float sum = 0;                    // reault of summing juction (integral + derivative + protortion)
 
 // ADC Readings and constants
 const float volts_per_bit = 3.3 / 4096; // reference is 3.3 V and ADC is 12 bits (2^12 = 4096)
@@ -50,27 +47,29 @@ float pot_array [3] = {0,0,0};    // 3 readings from pot
 float pot = 0;                    // median filtered pot readings
 float ptat_array [3] = {0,0,0};   // 3 readings from ptat
 float ptat = 0;                   // median fitlered ptat value
+const int sampling_delay = 100;   // delay between taking samples in ms
+const float adc_sampling_period = 0.0027 + (sampling_delay * 0.001);   // rate at which ADC samples
 
 // Calculated from ADC
-float ptat_voltage = 0;
-float old_ptat_voltage = 0;
-float pot_voltage = 0;
-float desired_ptat_voltage = 0.5;
+float ptat_voltage = 0;           // voltage read from ptat
+float old_ptat_voltage = 0;       // previous votlage read from ptat
+float desired_ptat_voltage = 0.5; // deisred ptat votlage
+float pot_voltage = 0;            // votlage read from pot
 
 // Parameters
-int pwm_val = 150;                // can be from 0 to 255
-float kdt = kd / adc_sampling_period; // setting this once instead of recalculating makes derivative calculation faster
-float pot_scale = 1;              // for scaling pot reading
-float ptat_offset = 0.5;
-bool first_time = true;
-const float slope = -0.3 / 3.3;   // equation: desired_ptat-voltage = slope * pot_voltage + 0.8
-const float pwm_scale = 2.55;        // scale for pwm change
+int pwm_val = 150;                // default to 150, value can be from 0 to 255
+float kdt = kd / adc_sampling_period; // calculating this now instead of recalculating makes derivative calculation faster
+// derivative = [(new votlage - old votlage) / time] * kd 
+// Remove (kd / time) from equation since it's a constant so this calculation is onlydone once 
+bool first_time = true;           // used to ensure derivative is calculatedcorectly on first run
+const float slope = -0.3 / 3.3;   // equation: desired_ptat_voltage = slope * pot_voltage + 0.8
+const float pwm_scale = 2.55;     // scale for pwm change; normalizes calculated pwm to 0 - 100% duty cycle
 
 
 void setup() {
   // put your setup code here, to run once:
   pinMode(pwm_out, OUTPUT);       // sets the pin as output
-  //pinMode(toggle_pin, OUTPUT);
+  //pinMode(toggle_pin, OUTPUT);  // usedfor determining computation time
   Serial.begin(9600);             // setup serial
 }
 
@@ -80,9 +79,9 @@ void loop() {
   
   // read the value from the sensor **************************************
   for(int i = 0; i < 3; ++i){
-    ptat_array[i] = analogRead(lm35_pin);
-    pot_array[i] = analogRead(pot_pin);
-    delay(sampling_delay);
+    ptat_array[i] = analogRead(lm35_pin); // read 3 ptat values
+    pot_array[i] = analogRead(pot_pin);   // read 3 pot values
+    delay(sampling_delay);                // wait
   }
 
   // apply median fitler to readings *************************************
@@ -94,10 +93,10 @@ void loop() {
 
   // set PWM value *******************************************************
   analogWrite(pwm_out, pwm_val);
-  //digitalWrite(toggle_pin, LOW);
-  //delay(100);
+  //digitalWrite(toggle_pin, LOW);  // used for determining computation time
+  //delay(100);                     // used for determining computation time
 
-  //display real and desired temperature on terminal *********************
+  //display readings and calculated values on terminal *******************
   Serial.print("Temp: ");
   Serial.println(ptat_voltage);
   Serial.print("Pot: ");
@@ -108,14 +107,14 @@ void loop() {
   //Serial.println(integral);
   //Serial.print("Error: ");
   //Serial.println(error);
-  Serial.print("Sum: ");
-  Serial.println(sum);
+  //Serial.print("Sum: ");
+  //Serial.println(sum);
 }
 
 float medianFilter(float a[]){
   // ONLY WORKS IF WINDOW OF FILTER IS 3 NUMBERS WIDE
   // The methodology is not easy to read, but is efficient
-  // Checks to see which of the values is between the other two
+  // Checks to see which of the values is between the other two (this is median)
 
   if((a[0] <= a[1] && a[0] >= a[2]) || (a[0] >= a[1] && a[0] <= a[2]))      //if a0 is between a1 and a2
       return a[0];
@@ -124,6 +123,7 @@ float medianFilter(float a[]){
   else                                                                      // if a2 is between a0 and a1
       return a[2];
 }
+
 
 // set PWM values to change duty Cycle of PWM: Low DC = slow fan, High DC = fast fan
 // PWM values range from 0 (off) to 255 (100% DC)
@@ -143,9 +143,10 @@ void setPWM()
    */
   ptat_voltage = ptat * (volts_per_bit);    // convert digital ptat reading back to analog voltage value
   pot_voltage = pot * (volts_per_bit);      // convert digital pot reading back to analog voltage value
-  desired_ptat_voltage = slope * pot_voltage + 0.8;   // desired_ptat-voltage = slope * pot_voltage + 0.8
+  desired_ptat_voltage = slope * pot_voltage + 0.8;   // use equation to find desired voltage
 
-  // if ptat_votlage > desired, then temp is too high, so increase duty cycle
+  // if ptat_votlage > desired, then temp is too high, so increase duty cycle with positive error val
+  // if ptat_voltage < desired, then temp is too low, so decrease duty cycle with negative error val
   error = ptat_voltage - desired_ptat_voltage;
 
   //use PID controller ***************************************************************************************
@@ -154,10 +155,10 @@ void setPWM()
 
 float PID(float error){
   // Derivative **********************************************************************************************
+  // If system has just started (first_time == true), old_ptat_voltage will be 0, giving incorrect derivative
   if(!first_time){
     derivative = (kdt * (ptat_voltage - old_ptat_voltage));
   }
-  //if system has just started (first_time == true), old_ptat_voltage will be 0, giving incorrect derivative
   else{
     derivative = 0;
     first_time = false;
@@ -176,11 +177,11 @@ float PID(float error){
   sum = (derivative + integral + proportion) * error;
 
   int new_pwm = pwm_val + sum * pwm_scale; // new_ccr must be an int, so decimals purposely get truncated;
-                                           // could use scale = 2.55 since pwm_val goes from 0 to 255, so 2.55 normalizes it
+                                           // using scale = 2.55 since pwm_val goes from 0 to 255, so 2.55 normalizes it
   // account for out of bounds values
   if(new_pwm > 255)
     return 255;
-  else if (new_pwm < 30)
+  else if (new_pwm < 30)  // don't want fan to turn off, because turingin ti completely off and on causes bad oscillations
     return 30;
   else
     return new_pwm;
