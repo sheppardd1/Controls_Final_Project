@@ -10,4 +10,4 @@ The device is connected as shown below in the schematic. The desired and current
  * P6.0 temperature sensor voltage reading
  * P6.1 potentiometer votlage reading
  ## Schematic
- <img src="schematic.png">
+ <img src="schematic.png" width="454" height="264">
