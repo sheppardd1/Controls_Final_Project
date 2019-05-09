@@ -19,4 +19,4 @@ The device is connected as shown below in the schematic. The desired and current
 The demo video can be downloaded from this repository or viewed online at https://drive.google.com/open?id=14-AI9EcmoH4rl4chxboLBu3b_AB6IzmD
 
 ## Acknowledgements
- * Some of the basic code funcitonality is based on example code found on <a href="https://energia.nu/reference/en/language/functions/analog-io/analogread/">Energia's website</a>.
+ * Some of the basic code functionality is based on example code found on <a href="https://energia.nu/reference/en/language/functions/analog-io/analogread/">Energia's website</a>.
