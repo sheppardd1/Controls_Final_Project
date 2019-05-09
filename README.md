@@ -1,6 +1,7 @@
 # Controls Final Project
 ## Overview
 This system is designed to control a fan using PWM that is set by a PID controller. The overview of the system is given in the block diagram below.
+
 <img src="block_diagram_detailed.png" width="661" height="219">
 
 ## Functionality
