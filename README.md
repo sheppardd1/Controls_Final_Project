@@ -9,7 +9,7 @@ The device is connected as shown below in the schematic. The desired and current
  * P3.5 - PWM output from MSP430
  * P6.0 temperature sensor voltage reading
  * P6.1 potentiometer votlage reading
- ## Schematic
+## Schematic
  <img src="schematic.png" width="606" height="353">
- ## Mini Demo
+## Mini Demo
 The demo video can be downloaded from this repository or viewed online at https://drive.google.com/open?id=14-AI9EcmoH4rl4chxboLBu3b_AB6IzmD
