@@ -12,4 +12,4 @@ The device is connected as shown below in the schematic. The desired and current
  ## Schematic
  <img src="schematic.png" width="606" height="353">
  ## Mini Demo
- The demo video can be downloaded from this repository or viewed online at https://drive.google.com/open?id=14-AI9EcmoH4rl4chxboLBu3b_AB6IzmD
+The demo video can be downloaded from this repository or viewed online at https://drive.google.com/open?id=14-AI9EcmoH4rl4chxboLBu3b_AB6IzmD
